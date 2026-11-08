@@ -391,12 +391,19 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
             //   · 保持时长有上限（HOLD_MAX），超过就转旁路，不会永久糊住
             this.underruns++;
             this.stall++;
-            // 用上一块真实输出的最后一个 BLOCK 循环填充：幅度/波形连续，无调制
-            if (this.hasPlayBuf) {
-              outCh[i] = this.playBuf[this.holdPos];
-              this.holdPos = (this.holdPos + 1) % BLOCK;
+            // 【0.4.74 · 二次修正】"循环播放最近一块"仍然会产生周期性伪影：
+            // 饥饿超过 480 样本（10ms）时同一块会重复，形成 10ms 周期的音调/电流感。
+            // 实测长跑 jitter 仍会冲到 0.14。
+            //
+            // 正确做法：只播一次，然后【平滑淡到静音】——不是指数衰减（那会归零得太快、
+            // 且每块重触发形成调制），而是按剩余饥饿时长做一次线性渐隐。
+            // 声音短暂变小然后安静，听感是"一句话说到一半卡了一下"，没有电流。
+            if (this.hasPlayBuf && this.holdPos < BLOCK) {
+              const remain = (BLOCK - this.holdPos) / BLOCK;   // 1 → 0
+              outCh[i] = this.playBuf[this.holdPos] * remain;
+              this.holdPos++;
             } else {
-              outCh[i] = this.last;   // 还没攒够一整块：保持恒定值（不是归零）
+              outCh[i] = 0;   // 播完就真静音（不再重复，不再衰减）
             }
             if (this.stall > STALL_LIMIT) {
               this.bypass = true;
@@ -415,13 +422,13 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
         // 【0.4.73】第二处饥饿分支：同样改为循环最近一块真实波形。
         // 原来这里也是 this.last *= 0.7071（衰减到零）→ 10ms 周期调制 → 电流声。
         this.underruns++;
-        if (this.hasPlayBuf) {
-          outCh[i] = this.playBuf[this.holdPos];
-          this.holdPos = (this.holdPos + 1) % BLOCK;
+        if (this.hasPlayBuf && this.holdPos < BLOCK) {
+          const remain = (BLOCK - this.holdPos) / BLOCK;
+          outCh[i] = this.playBuf[this.holdPos] * remain;
+          this.holdPos++;
         } else {
-          outCh[i] = this.last;
+          outCh[i] = 0;
         }
-        // 【0.4.74】标记"这一轮呼吸道过饥饿"，供下面复位 holdPos
         this._starved = true;
       }
 
