@@ -55,6 +55,23 @@ const C_REQ_RESET = 19;
 const C_DIAG_STARVE = 20;
 
 const STALL_LIMIT = Math.round(48000 * 0.12);   // 120 ms
+
+// 【0.4.75 · 延迟调速器】
+// 根因：饥饿时 worklet 不前进 outRead，却照样往外吐样本 —— 每饿 1 ms，播放就永久多落后 1 ms。
+// 原代码里没有任何东西把这段延迟收回来（MAXLAG 只管输入环），于是：
+//   每次 CPU 抖动 → 输出环水位 +N 块 → 越用越满 → 顶到 OUT_SLOTS(12) →
+//   worker 开始丢输入（硬跳时间轴，没有交叉淡化）→ 咔哒 / 卡麦 / 电音，且 AEC 失配。
+//   重启应用水位清零，所以"重启就好"。
+// 修法：每到块边界看一次水位，超出目标就跳过一块，并用 SKIP_XF 样本交叉淡化接缝。
+//   优先在安静块上跳（听不出来）；水位超过硬上限时不挑块，直接跳。
+const GOV_SLACK = 2;        // 水位 > prefill + 2 且当前块安静 → 跳
+const GOV_HARD = 5;         // 水位 > prefill + 5 → 不论安静与否都跳
+const GOV_QUIET = 0.003;    // 约 -50 dBFS RMS 视为安静块
+const SKIP_XF = 96;         // 2 ms 交叉淡化
+// 【0.4.75 · 饥饿处理】饥饿时不再循环 playBuf（块首尾不连续，100 Hz 周期性跳变 = "电音"），
+// 改成 2 ms 内从最后一个处理后样本淡到【原始输入】（KOOK 同款：饥饿直通），
+// 数据回来后再 2 ms 淡回处理后信号。全程波形连续，没有周期结构。
+const WET_XF = 96;
 // 【0.4.55】旁路后多久尝试恢复（500 ms）。太短会在真卡顿时反复横跳，
 // 太长则用户明显感觉「降噪没了」。500 ms 是主观测试里"察觉不到但足够脱离瞬时卡顿"的点。
 const RECOVER_SAMPLES = Math.round(48000 * 0.5);
@@ -89,6 +106,12 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
     this.totalBlocks = 0;
     this.dropped = 0;
     this.underruns = 0;
+    this.govSkips = 0;       // 调速器跳过的块数
+    this.starves = 0;        // 进入饥饿的次数（不是样本数）
+    this.wet = 0;            // 0 = 原始输入，1 = 处理后信号；两者之间线性交叉
+    this.starving = false;
+    this.skipSlot = -1;      // 刚被跳过的块（交叉淡化用它的开头接上一块的结尾）
+    this.skipPos = 0;
 
     // 欠载软着陆
     this.last = 0;
@@ -163,6 +186,7 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
     this.pre = 0; this.xf = 0;
     this.gotFirst = false;
     this.outCursorBlk = 0;
+    this.wet = 0; this.starving = false; this.skipSlot = -1;
     if (this.ctrl) {
       this.outRead = Atomics.load(this.ctrl, C_OUT_R);
       this.inWrite = Atomics.load(this.ctrl, C_IN_W);
@@ -180,6 +204,8 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
     this.dropped = 0;
     this.totalBlocks = 0;
     this.bypassAge = 0;
+    this.govSkips = 0;
+    this.starves = 0;
   }
 
   setEnabled(on) {
@@ -191,6 +217,7 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
     this.bypass = false;
     this.gotFirst = false;
     this.outCursorBlk = 0;
+    this.wet = 0; this.starving = false; this.skipSlot = -1;
     if (this.ctrl) {
       this.outRead = Atomics.load(this.ctrl, C_OUT_R);
       this.inWrite = Atomics.load(this.ctrl, C_IN_W);
@@ -204,6 +231,8 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
         type: 'diag', mode: this.mode, external: this.external,
         calls: this.callCount, sent: this.totalBlocks,
         dropped: this.dropped, underruns: this.underruns,
+        govSkips: this.govSkips, starves: this.starves,
+        level: this.ctrl ? (Atomics.load(this.ctrl, C_OUT_W) - this.outRead) : -1,
         bypass: this.bypass, qlen: this.outQueue.length,
       });
     }
@@ -271,6 +300,7 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
       this.stall = 0;
       this.acc.fill(0);
       this.pre = 0; this.xf = 0;
+      this.wet = 0; this.starving = false; this.skipSlot = -1;
       // 【0.4.56】旁路期间保持 gotFirst：否则解除旁路后要重新预填 3 块（30 ms），
       // 那 30 ms 全是欠载 —— 实测切档瞬间 underruns 冲到 12704，主观就是"卡一下"。
       // 只要输出环里还有存量，就让它继续当预填余量。
@@ -331,7 +361,7 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
         if (!this.gotFirst) {
           if (outWriteNow - this.outRead >= this.prefill) {
             this.gotFirst = true; this.outCursorBlk = 0;
-            this.xf = XFADE;            // 直通 → 处理后，做一次短交叉淡化
+            this.wet = 0;               // 直通 → 处理后：由 wet 斜坡做 2 ms 交叉淡化
           }
         }
         if (!this.gotFirst) {
@@ -347,63 +377,55 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
             try { this.port.postMessage({ type: 'bypass', reason: 'no-worker' }); } catch (_) { /* ignore */ }
           }
         } else {
+          const dry = inCh ? inCh[i] : 0;
           if (this.outCursorBlk >= BLOCK) {
             this.outCursorBlk = 0;
             this.outRead++;
+            // ── 延迟调速器（见文件头 GOV_* 说明）──
+            const level = outWriteNow - this.outRead;   // 含即将播放的这一块
+            if (level > this.prefill + GOV_SLACK) {
+              const cand = this.outSlots[this.outRead % OUT_SLOTS];
+              let ss = 0;
+              for (let k = 0; k < BLOCK; k += 4) ss += cand[k] * cand[k];
+              const quiet = Math.sqrt(ss / (BLOCK / 4)) < GOV_QUIET;
+              if (quiet || level > this.prefill + GOV_HARD) {
+                this.skipSlot = this.outRead % OUT_SLOTS;
+                this.skipPos = 0;
+                this.outRead++;
+                this.govSkips++;
+              }
+            }
             Atomics.store(this.ctrl, C_OUT_R, this.outRead);
           }
-          const forceStarve = this.ctrl && Atomics.load(this.ctrl, C_DIAG_STARVE) === 1;
+          const forceStarve = this.diag && this.ctrl && Atomics.load(this.ctrl, C_DIAG_STARVE) === 1;
           if (!forceStarve && this.outRead < outWriteNow) {
-            const v = this.outSlots[this.outRead % OUT_SLOTS][this.outCursorBlk++];
-            // 直通 → 处理后的一次交叉淡化：两段信号的相位/延迟不同，
-            // 硬切会有可闻的"咔"（0.5 块 ~ 交叉淡化实测无咔哒）。
-            if (this.xf > 0) {
-              const w2 = this.xf / XFADE;
-              outCh[i] = v * (1 - w2) + this.pre * w2;
-              this.pre = outCh[i];
-              this.xf--;
+            let v = this.outSlots[this.outRead % OUT_SLOTS][this.outCursorBlk++];
+            // 跳块接缝：被跳过的块开头 = 上一块结尾的自然延续，从它淡到新块
+            if (this.skipSlot >= 0) {
+              const k = (this.skipPos + 1) / (SKIP_XF + 1);
+              v = v * k + this.outSlots[this.skipSlot][this.skipPos] * (1 - k);
+              if (++this.skipPos >= SKIP_XF) this.skipSlot = -1;
+            }
+            this.starving = false;
+            if (this.wet < 1) {
+              // 预热结束或饥饿恢复：原始 → 处理后，2 ms 交叉淡化
+              this.wet = Math.min(1, this.wet + 1 / WET_XF);
+              outCh[i] = v * this.wet + dry * (1 - this.wet);
             } else {
               outCh[i] = v;
             }
-            this.last = outCh[i];
-            // 【0.4.74】恢复正常输出时把循环相位归零。
-            // 否则下次饥饿会从上次中断的随机位置继续播 playBuf，
-            // 波形在块边界处跳变 —— 累积成"开久了偶尔咔一下"。
-            if (this.stall > 0) this.holdPos = 0;
+            this.last = v;
             this.stall = 0;
-            this.fade = 0;
-            // 【0.4.73】把这一块的真实输出存起来，饥饿时循环它（见上面的说明）
-            if (this.holdFill < BLOCK) {
-              this.holdBuf[this.holdFill] = outCh[i];
-              this.holdFill++;
-              // 一块填满 → 转成可循环播放的完整块（双缓冲，避免读到正在覆盖的数据）
-              if (this.holdFill === BLOCK) { this.playBuf.set(this.holdBuf); this.hasPlayBuf = true; this.holdFill = 0; }
-            }
           } else {
-            // 【0.4.73 · "电流抖动麦"的根因修复】
-            // 原来：饿住时 this.last *= 0.7071 每样本执行，且 fade 只在进入时设一次 32。
-            //   32 样本后幅度 = 0.7071^32 ≈ 1.5e-5（基本归零），但乘法继续跑。
-            //   饥饿每块都可能重新触发 → fade 重置 → 形成 10ms 周期的增益调制。
-            //   听感就是"电流抖动 / 颤音"，而且 CPU 越紧越频繁。
-            //
-            // 现在：从"衰减到零"改成"保持最近一块的真实波形循环播放"。
-            //   · 保持幅度和频谱（不产生调制，不会有电流声）
-            //   · 保持时长有上限（HOLD_MAX），超过就转旁路，不会永久糊住
+            // 饥饿：处理后信号淡出、原始输入淡入。不循环、不补零、不产生周期结构。
+            if (!this.starving) { this.starving = true; this.starves++; }
             this.underruns++;
             this.stall++;
-            // 【0.4.74 · 二次修正】"循环播放最近一块"仍然会产生周期性伪影：
-            // 饥饿超过 480 样本（10ms）时同一块会重复，形成 10ms 周期的音调/电流感。
-            // 实测长跑 jitter 仍会冲到 0.14。
-            //
-            // 正确做法：只播一次，然后【平滑淡到静音】——不是指数衰减（那会归零得太快、
-            // 且每块重触发形成调制），而是按剩余饥饿时长做一次线性渐隐。
-            // 声音短暂变小然后安静，听感是"一句话说到一半卡了一下"，没有电流。
-            if (this.hasPlayBuf && this.holdPos < BLOCK) {
-              const remain = (BLOCK - this.holdPos) / BLOCK;   // 1 → 0
-              outCh[i] = this.playBuf[this.holdPos] * remain;
-              this.holdPos++;
+            if (this.wet > 0) {
+              this.wet = Math.max(0, this.wet - 1 / WET_XF);
+              outCh[i] = this.last * this.wet + dry * (1 - this.wet);
             } else {
-              outCh[i] = 0;   // 播完就真静音（不再重复，不再衰减）
+              outCh[i] = dry;
             }
             if (this.stall > STALL_LIMIT) {
               this.bypass = true;
@@ -421,15 +443,9 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
       } else {
         // 【0.4.73】第二处饥饿分支：同样改为循环最近一块真实波形。
         // 原来这里也是 this.last *= 0.7071（衰减到零）→ 10ms 周期调制 → 电流声。
+        // 【0.4.75】与 SAB 路径一致：饥饿直通原始输入（不循环旧块）
         this.underruns++;
-        if (this.hasPlayBuf && this.holdPos < BLOCK) {
-          const remain = (BLOCK - this.holdPos) / BLOCK;
-          outCh[i] = this.playBuf[this.holdPos] * remain;
-          this.holdPos++;
-        } else {
-          outCh[i] = 0;
-        }
-        this._starved = true;
+        outCh[i] = inCh ? inCh[i] : 0;
       }
 
       if (this.bypass) outCh[i] = inCh ? inCh[i] : 0;
@@ -438,8 +454,6 @@ class FongDenoiseProcessor extends AudioWorkletProcessor {
       this.acc[this.accLen++] = inCh ? inCh[i] : 0;
       if (this.accLen >= BLOCK) {
         this.accLen = 0;
-        // 【0.4.74】一块结束：如果这轮饿过，把循环相位归零，下轮从波形起点开始
-        if (this._starved) { this.holdPos = 0; this._starved = false; }
         if (useSab) {
           this.pushInput();
         } else if (this.inflight < this.maxInflight) {

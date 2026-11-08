@@ -166,11 +166,25 @@ let prePeak = 0, preDb = -120;   // AEC 之前的近端电平（VAD 判语音用
 //   farRate = 写指针推进速率（块/秒，正常 100）—— 它不动 = 参考链断了（与远端是否说话无关）
 //   farPeakHold = 诊断窗口内的峰值保持 —— 只报「最后一块」会把「远端刚好停顿」误判成「参考环静音」
 let farPeakHold = 0, farRateAt = 0, farRateW = 0, farRate = 0;
+// 【0.4.75】far 积压控制。
+// 原逻辑只在积压 > FAR_SLOTS(16) 时跳到 w-16 —— 跳完仍落后 160 ms，而且每次跳都是一个
+// 不可预测的延迟台阶，AEC3 的延迟估计器要重新收敛（期间回声漏过去）。
+// far 与 near 由同一个 AudioContext 驱动，速率完全相同，积压只来自"near 没被 1:1 消费"
+// （worklet 预热/旁路期间不推 near、worker 丢块）。所以把积压钉在一个小的固定值即可。
+const FAR_TARGET = 2;     // 正常积压（块）
+const FAR_RESYNC = 6;     // 超过这个数才重同步（小抖动不动它，避免频繁改变延迟）
+let farResyncs = 0;
+/** near 被丢掉 n 块时，far 也丢 n 块，保持两条时间轴同步 */
+function skipFar(n) {
+  if (!farCtrl || n <= 0) return;
+  const w = Atomics.load(farCtrl, C_FAR_WRITE);
+  farRead = Math.min(w, farRead + n);
+}
 function takeFar() {
   if (!farCtrl) return FAR_SILENCE;
   const w = Atomics.load(farCtrl, C_FAR_WRITE);
   if (w <= farRead) return FAR_SILENCE;
-  if (w - farRead > FAR_SLOTS) farRead = w - FAR_SLOTS;   // 积压太多就跳到最新，不累积延迟
+  if (w - farRead > FAR_RESYNC) { farRead = w - FAR_TARGET; farResyncs++; }
   const slot = farSlots[farRead % FAR_SLOTS];
   farRead++;
   // 每帧统计（开销可忽略：一次 480 元素扫描）
@@ -295,7 +309,10 @@ function waitForInput() {
 // 为什么必须有：处理耗时随负载涨（游戏抢 CPU 时实测 25 ms/块，而块周期
 // 只有 10 ms），积压会线性增长，用户听到的是"越来越滞后"的声音，
 // 十几秒后彻底对不上嘴型。实测无追帧 25 ms/块 → 起音 515 ms。
-const MAXLAG = 3;
+// 【0.4.75】3 → 6。worklet 侧有了延迟调速器（在安静块上带交叉淡化地回收延迟），
+// 这里不必再对 30 ms 级的抖动就硬跳输入（硬跳 = GTCRN 的 STFT 历史断裂 = 咔哒）。
+// 仍保留上限：处理速度持续跟不上实时（RTF>1）时，积压不能无限增长。
+const MAXLAG = 6;
 
 function step() {
   const w = Atomics.load(ctrl, C_IN_W);
@@ -325,12 +342,15 @@ function step() {
     Atomics.store(ctrl, C_IN_R, inRead);
     dropped += skipped;
     Atomics.store(ctrl, C_STAT_DROP, dropped);
-    // far 已在上面消费，时间轴不丢（这里丢掉的是 near 的中间块，far 对应块也已丢掉）
+    // 【0.4.75】原注释说"far 对应块也已丢掉"，但代码只消费了 1 块 far，丢了 skipped 块 near。
+    // 每次追帧 far 就相对 near 多落后 skipped×10 ms，直到积压破 16 再整体跳 —— AEC 失锁。
+    skipFar(skipped);
   }
 
   // 输出环满：worklet 还没读走。丢输入块是错位，覆写正在播的槽是噪声 —— 取前者。
   if (outWrite - Atomics.load(ctrl, C_OUT_R) >= OUT_SLOTS) {
-    dropped++;
+    dropped += (w - inRead);
+    skipFar(w - inRead - 1);         // 【0.4.75】near 丢几块，far 就丢几块（顶部已消费 1 块）
     inRead = w;                      // 跳过积压，追到最新
     Atomics.store(ctrl, C_IN_R, inRead);
     Atomics.store(ctrl, C_STAT_DROP, dropped);
@@ -420,6 +440,8 @@ function step() {
         prePeak: Number(prePeak.toFixed(4)),
         farPeakHold: Number(farPeakHold.toFixed(4)),
         farRate: Math.round(farRate),
+        farLag: farCtrl ? (Atomics.load(farCtrl, C_FAR_WRITE) - farRead) : -1,
+        farResyncs,
         farHz: Math.round(farDiagZero / 2 * (48000 / BLOCK)),   // 过零率估频（正弦足够准）
         nativeHasFongAec: (() => { try { const n = loadNative(lastMsg || {}); return !!(n && n.FongAec); } catch (e) { return 'load-fail:' + ((e && e.message) || e); } })(),
       });
