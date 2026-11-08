@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+dist/
+target/
+*.node
+*.dll
+*.exe
+fong-sfu*
+# 备份与临时
+*.bak
+*.bak-*
+*.work
+__pycache__/
+# 运行数据（含用户邮箱/口令哈希，绝不入库）
+server/data/

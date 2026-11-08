@@ -1,0 +1,23 @@
+[package]
+name = "fong-native"
+version = "0.1.0"
+edition = "2021"
+description = "FONG native audio processing for Electron"
+
+[lib]
+name = "fong_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+fong-dsp = { path = "../dsp" }
+napi = { version = "3", default-features = false, features = ["napi6"] }
+napi-derive = "3"
+nnnoiseless = "0.5"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

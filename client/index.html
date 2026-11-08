@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FONG</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src http: https:; img-src 'self' data: blob: http: https:; media-src 'self' blob: mediastream: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="icon" href="assets/fong-icon.svg">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="fong-arc.css">
+<link rel="stylesheet" href="fong-basic.css">
+</head><body>
+<div id="banner" class="banner hidden" role="alert"><span id="bannerText"></span><button id="bannerAct" class="btn sm danger"></button><button id="bannerClose" class="icon-btn" aria-label="关闭提示"><svg><use href="#i-x"/></svg></button></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<div class="titlebar" id="titlebar" aria-hidden="true">
+  <img class="tb-mark" src="assets/fong-icon.svg" alt="">
+  <span class="tb-name">FONG</span>
+  <span class="tb-sep"></span>
+  <span class="tb-sub">开黑语音</span>
+  <div class="tb-ctl">
+    <button id="winMin" class="tb-btn" aria-label="最小化" title="最小化"><svg><use href="#i-min"/></svg></button>
+    <button id="winMax" class="tb-btn" aria-label="最大化" title="最大化"><svg><use href="#i-max"/></svg></button>
+    <button id="winClose" class="tb-btn close" aria-label="关闭" title="关闭到托盘"><svg><use href="#i-x"/></svg></button>
+  </div>
+</div>
+<div id="updBar" class="upd-bar hidden" role="status" aria-live="polite"><i id="updFill"></i><span id="updText">正在下载更新…</span></div>
+<div class="shell" id="shell">
+  <nav class="spaces" aria-label="房间">
+    <div id="spaceList" class="space-list" role="list"></div>
+    <button id="addSpace" class="space-tile add" aria-label="创建房间或加入" title="创建房间 / 输房间号加入"><svg><use href="#i-plus"/></svg></button>
+    <button id="meBtn" class="me-tile" aria-label="我的资料" title="我的资料"></button>
+  </nav>
+
+  <section class="rooms" aria-label="频道列表">
+    <header class="pane-head">
+      <button id="spaceHead" class="space-head" aria-haspopup="menu" aria-label="房间菜单">
+        <span class="title" id="spaceName">—</span><svg class="chev"><use href="#i-chevron"/></svg>
+      </button>
+    </header>
+    <div id="roomSearchWrap" class="search hidden"><svg><use href="#i-search"/></svg><input id="roomSearch" placeholder="搜索频道" aria-label="搜索频道"></div>
+    <div id="roomList" class="room-list" role="list"></div>
+    <button id="addRoom" class="add-room hidden"><svg><use href="#i-plus"/></svg>新建频道</button>
+    <div id="noSpace" class="no-space hidden">
+      <p class="muted">还没有房间。</p>
+      <button id="noSpaceCreate" class="btn sm">创建房间</button>
+      <button id="noSpaceJoin" class="btn sm ghost">输房间号 / 邀请码</button>
+    </div>
+  </section>
+
+  <main class="stage" aria-label="房间">
+    <header class="mobile-head">
+      <button id="drawerBtn" class="icon-btn" aria-label="打开房间列表"><svg><use href="#i-menu"/></svg></button>
+      <img src="assets/fong-wordmark-clear.svg" alt="FONG" class="mobile-mark">
+    </header>
+    <div id="empty" class="empty">
+      <img src="assets/fong-wordmark-clear.svg" alt="FONG" class="empty-mark">
+      <p class="empty-title" id="emptyTitle">选一个语音频道，直接开说</p>
+      <p class="muted" id="emptyText">左边点任意频道就能进，不用拨号。</p>
+      <div class="row empty-cta hidden" id="emptyCta">
+        <button id="emptyCreate" class="btn">创建房间</button>
+        <button id="emptyJoin" class="btn ghost">输入房间号加入</button>
+      </div>
+    </div>
+    <div id="roomView" class="room-view hidden">
+      <header class="pane-head room-head">
+        <div class="room-head-text"><div id="roomTitle" class="title"></div><div id="roomSub" class="muted small"></div></div>
+        <button id="msgSearchBtn" class="icon-btn" aria-label="搜索本空间的消息" title="搜索消息（KOOK/OOPZ 都有）"><svg><use href="#i-search"/></svg></button>
+        <div id="netInfo" class="net small" aria-label="网络状态"></div>
+      </header>
+      <div class="room-split">
+        <!-- [LAYOUT] 中间成员区已移除。成员信息统一由右侧 presence 承担。
+           #members 保留但隐藏，只因 renderer.js 里有引用，删了会抛 null。 -->
+        <div class="room-left" hidden aria-hidden="true"><div id="skeleton" class="members hidden"></div><div id="members" class="members" role="list"></div></div>
+        <div id="roomChat" class="room-chat">
+          <div id="imgPreview" class="img-preview hidden">
+            <img id="imgPreviewEl" alt="待发送截图">
+            <button id="imgPreviewX" class="icon-btn" aria-label="移除图片"><svg><use href="#i-x"/></svg></button>
+          </div>
+          <div id="msgList" class="msg-list" role="log" aria-live="polite"></div>
+          <div id="replyBar" class="reply-bar hidden" aria-live="polite"></div>
+          <div class="composer">
+            <button id="shotBtn" class="icon-btn" title="发送截图（或直接 Ctrl+V 粘贴）" aria-label="发送截图"><svg><use href="#i-image"/></svg></button>
+            <button id="fileBtn" class="icon-btn" title="发送文件（任意类型，上限 25MB）" aria-label="发送文件"><svg><use href="#i-file"/></svg></button>
+            <button id="emojiBtn" class="icon-btn" title="表情" aria-label="表情"><svg><use href="#i-smile"/></svg></button>
+            <textarea id="msgInput" rows="1" maxlength="2000" placeholder="说点什么…（回车发送，Shift+回车换行）"></textarea>
+            <span id="msgCount" class="msg-count hidden" aria-live="polite"></span>
+            <button id="msgSend" class="btn sm" aria-label="发送"><svg><use href="#i-send"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside id="presence" class="presence hidden" aria-label="成员在线">
+    <div class="presence-head">
+      <span id="presenceTitle">成员</span>
+      <div class="presence-ctl">
+        <button id="pMute" class="icon-btn" aria-label="静音麦克风" title="静音麦克风"><svg><use href="#i-mic"/></svg></button>
+        <button id="pDeaf" class="icon-btn" aria-label="闭听" title="闭听（不听也不说）"><svg><use href="#i-headphones"/></svg></button>
+        <button id="pSettings" class="icon-btn" aria-label="设置" title="设置"><svg><use href="#i-settings"/></svg></button>
+        <button id="pHangup" class="btn sm danger" aria-label="挂断" title="挂断">挂断</button>
+      </div>
+    </div>
+    <div id="presenceOnline" class="presence-group"></div>
+    <div id="presenceOffline" class="presence-group"></div>
+  </aside>
+
+  <div id="scrim" class="scrim"></div>
+  <div id="hoverCard" class="hover-card hidden"></div>
+  <div id="lightbox" class="hidden"></div>
+  <input id="shotFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+  <input id="anyFile" type="file" hidden>
+  <div id="emojiPanel" class="emoji-panel hidden" role="dialog" aria-label="选择表情"></div>
+  <div id="filePreview" class="file-preview hidden"></div>
+
+  <footer class="bar" aria-label="控制条">
+    <div class="bar-left">
+      <div class="ctl" id="micCtl">
+        <button id="muteBtn" class="tgl" aria-label="静音麦克风" aria-pressed="false"><svg id="micIcon"><use href="#i-mic"/></svg><span class="tgl-l" id="muteLbl">静音</span></button>
+        <select id="micSel" aria-label="麦克风"></select>
+        <div class="mini-meter" aria-hidden="true"><i id="miniMeter"></i></div>
+      </div>
+      <div class="ctl" id="spkCtl">
+        <button id="deafBtn" class="tgl" aria-label="闭听" aria-pressed="false"><svg id="deafIcon"><use href="#i-headphones"/></svg><span class="tgl-l" id="deafLbl">闭听</span></button>
+        <select id="spkSel" aria-label="扬声器"></select>
+      </div>
+      <button id="settingsBtn" class="icon-btn lg" aria-label="设置"><svg><use href="#i-settings"/></svg></button>
+    </div>
+    <div class="bar-right">
+      <span id="modeTag" class="tag-pill"></span>
+      <button id="callBtn" class="btn call"><svg><use href="#i-phone"/></svg><span>加入语音</span></button>
+    </div>
+  </footer>
+</div>
+
+<div id="searchPanel" class="search-panel hidden" role="dialog" aria-label="搜索消息">
+  <div class="sp-head">
+    <svg class="sp-ico"><use href="#i-search"/></svg>
+    <input id="searchInput" type="search" placeholder="搜索本空间的消息…（回车搜索，Esc 关闭）" autocomplete="off">
+    <button id="searchClose" class="icon-btn sm" aria-label="关闭搜索"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div id="searchList" class="search-list"></div>
+</div>
+<div id="menu" class="menu hidden" role="menu"></div>
+
+<!-- 通用对话框 -->
+<div id="dialog" class="modal hidden" role="dialog" aria-modal="true"><div class="card narrow">
+  <div id="dlgTitle" class="title"></div>
+  <div id="dlgBody" class="dlg-body"></div>
+  <div class="row end"><button id="dlgCancel" class="btn ghost sm">取消</button><button id="dlgOk" class="btn sm">确定</button></div>
+</div></div>
+
+<!-- 设置 -->
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-label="设置"><div class="card wide pane-card">
+  <header class="card-head"><div class="title">设置</div><button class="icon-btn" data-close aria-label="关闭"><svg><use href="#i-x"/></svg></button></header>
+  <div class="tabs" role="tablist">
+    <button class="tab on" data-tab="t-audio" role="tab">音频</button>
+    <button class="tab" data-tab="t-keys" role="tab">快捷键</button>
+    <button class="tab" data-tab="t-notify" role="tab">通知</button>
+    <button class="tab" data-tab="t-general" role="tab">常规</button>
+    <button class="tab" data-tab="t-account" role="tab">账号</button>
+    <button class="tab" data-tab="t-about" role="tab">关于</button>
+  </div>
+  <div id="t-audio" class="tabpane">
+    <div class="grid2">
+      <label class="field">麦克风<select id="setMic"></select></label>
+      <label class="field">扬声器 / 耳机<select id="setSpk"></select></label>
+    </div>
+    <div class="field">说话方式
+      <div class="seg" role="radiogroup"><button data-mode="vad" class="on">自动检测</button><button data-mode="ptt">按键说话</button></div>
+    </div>
+    <div id="vadBox" class="field">
+      <div class="field-head"><span>输入电平与触发阈值</span><span id="thrVal" class="val">-42 dB</span></div>
+      <div class="thr-meter">
+        <div class="meter"><i id="setMeter"></i><b id="thrMark"></b></div>
+        <input id="thr" type="range" min="-70" max="-10" value="-42" aria-label="触发阈值，拖动调整">
+      </div>
+      <span class="hint">拖动黄线调阈值：电平越过黄线才会发声，键盘声一般在线下面。</span>
+    </div>
+    <div id="pttBox" class="field hidden">按键说话：按住 <b id="pttLabel2" class="kbd"></b> 说话，可在「快捷键」里改。</div>
+    <div class="field" id="duckField">
+      <div class="field-head"><label class="check"><input id="duck" type="checkbox" checked>闪避：自己说话时把别人压低</label><span id="duckVal" class="val">-10 dB</span></div>
+      <input id="duckDb" type="range" min="-30" max="0" value="-10" aria-label="闪避压低量">
+      <span class="hint" id="duckHint"></span>
+    </div>
+    <div class="field">
+      <label>降噪强度</label>
+      <div class="seg" id="dnModes">
+        <button type="button" data-dn="0" title="完全不处理">关闭</button>
+        <button type="button" data-dn="3" title="高通 + 自适应噪声门。不动语音频谱，保真 48 dB，算法延迟 0 ms">自然</button>
+        <button type="button" data-dn="1" title="RNNoise，CPU 约 0.4%，降噪约 9 dB">低占用</button>
+        <button type="button" data-dn="2" title="GTCRN 48k，CPU 约 15%，降噪力度最大，但会改音色">质量</button>
+      </div>
+      <p class="hint" id="dnHint"></p>
+    </div>
+    <div class="field" id="hfField">
+      <label>高频处理</label>
+      <div class="seg" id="hfModes">
+        <button type="button" data-hf="0" title="不衰减，高频最丰富但毛刺感明显">原声</button>
+        <button type="button" data-hf="2" title="轻度衰减，听感偏亮">自然</button>
+        <button type="button" data-hf="3" title="推荐，毛刺基本消失">均衡</button>
+        <button type="button" data-hf="6" title="更强的衰减，安静但偏闷">干净</button>
+      </div>
+      <p class="hint" id="hfHint"></p>
+    </div>
+    <div class="field">
+      <label>音质</label>
+      <div class="seg" id="opusTiers">
+        <button type="button" data-kbps="96" title="最省带宽">标准</button>
+        <button type="button" data-kbps="128" title="PESQ 4.476">高保真</button>
+        <button type="button" data-kbps="192" title="PESQ 4.524">很高</button>
+        <button type="button" data-kbps="256" title="单声道 Opus 的编码上限，PESQ 4.544">极限</button>
+      </div>
+      <p class="hint" id="opusHint"></p>
+    </div>
+    <div class="row wrap">
+      <label class="check" id="nsWrap"><input id="ns" type="checkbox" checked><span>浏览器降噪</span><span class="hint" id="nsNote"></span></label>
+      <label class="check"><input id="agc" type="checkbox" checked>自动增益</label>
+      <label class="check"><input id="aec" type="checkbox">回声消除（外放时开）</label>
+    </div>
+    <div class="row"><span class="hint" id="aecStat">回声消除未开启</span><span class="hint" id="aecTip"></span></div>
+    <div class="row"><button id="loopBtn" class="btn ghost sm"><svg><use href="#i-ear"/></svg><span>听听自己的声音</span></button><span class="hint">戴耳机试，外放会啸叫。</span></div>
+    <p class="hint">48 kHz 单声道 · Opus <span id="specKbps">256</span> kbps CBR · 10 ms 帧 · FEC 开 · 不用 DTX</p>
+  </div>
+  <div id="t-keys" class="tabpane hidden">
+    <p class="hint" id="keysNote">全局生效，游戏全屏时也能用。点按钮后按下想要的键（支持鼠标侧键）。</p>
+    <div class="keyrow"><span>按键说话</span><button class="btn ghost sm kbd-btn" data-bind="ptt"></button><button class="icon-btn" data-clear="ptt" aria-label="清除"><svg><use href="#i-x"/></svg></button></div>
+    <div class="keyrow"><span>静音 / 取消静音</span><button class="btn ghost sm kbd-btn" data-bind="mute"></button><button class="icon-btn" data-clear="mute" aria-label="清除"><svg><use href="#i-x"/></svg></button></div>
+    <div class="keyrow"><span>闭听 / 取消闭听</span><button class="btn ghost sm kbd-btn" data-bind="deafen"></button><button class="icon-btn" data-clear="deafen" aria-label="清除"><svg><use href="#i-x"/></svg></button></div>
+    <div class="keyrow"><span>发送键</span><select id="sendKey" aria-label="发送键" style="width:100%">
+      <option value="enter">Enter 发送</option>
+      <option value="ctrl">Ctrl+Enter 发送</option>
+    </select></div>
+    <p class="hint" id="sendKeyHint">Enter 发送，Shift+Enter 换行</p>
+  </div>
+  <div id="t-general" class="tabpane hidden">
+    <div class="fieldrow" style="display:flex;gap:12px;align-items:flex-end">
+      <label class="field" style="flex:1">昵称<input id="nick" maxlength="16"></label>
+      <button id="avatarBtn" class="btn ghost sm" style="margin-bottom:2px">改头像</button>
+    </div>
+    <details class="adv"><summary>高级：中继服务器（STUN / TURN）</summary>
+      <p class="hint">连不上时才需要填。一般留空。</p>
+      <textarea id="ice" rows="3" spellcheck="false" placeholder="stun:stun.l.google.com:19302"></textarea>
+    </details>
+    <label class="check"><input id="autostart" type="checkbox">开机自动启动（后台）</label>
+    <label class="check"><input id="sounds" type="checkbox" checked>进出频道提示音</label>
+  </div>
+  <div id="t-notify" class="tabpane hidden">
+    <label class="field">通知级别
+      <select id="notifyLevel">
+        <option value="all">全部（有人说话就提示）</option>
+        <option value="mention">只提示 @我（推荐）</option>
+        <option value="none">全部关掉</option>
+      </select>
+    </label>
+    <p class="hint" id="notifyHint">窗口在后台时才会弹系统通知；正在看的频道不会重复提示。</p>
+    <label class="check"><input id="dnd" type="checkbox">免打扰（临时全静音，不含通话）</label>
+    <p class="hint">开了免打扰只停通知与提示音，语音照常收发——不会让对方听不到你。</p>
+    <div class="fieldrow" style="display:flex;gap:12px;align-items:center">
+      <label class="field" style="flex:1">提示音音量 <span id="toneVolLbl" class="muted">100%</span>
+        <input id="toneVol" type="range" min="0" max="100" value="100">
+      </label>
+    </div>
+    <div class="row wrap">
+      <label class="check"><input id="notifyOnJoin" type="checkbox" checked>有人进频道时提示</label>
+      <label class="check"><input id="notifyOnMsg" type="checkbox" checked>新消息提示（受上面级别约束）</label>
+    </div>
+    <div class="row"><button id="notifyPermBtn" class="btn ghost sm">申请系统通知权限</button><span class="hint" id="notifyPermState"></span></div>
+  </div>
+  <div id="t-account" class="tabpane hidden">
+    <div id="accGuest" class="hidden">
+      <p class="hint">现在用的是<b>本机身份</b>：换电脑或重装就没了，房间所有权也会丢。
+      绑定邮箱后，任何设备都能登回来。</p>
+      <label class="field">邮箱<input id="accEmail" type="email" placeholder="you@example.com" spellcheck="false" autocomplete="email"></label>
+      <label class="field">密码<input id="accPass" type="password" placeholder="至少 6 位" autocomplete="current-password"></label>
+      <label class="field" id="accPass2Wrap">确认密码<input id="accPass2" type="password" placeholder="再输一遍" autocomplete="new-password"></label>
+      <div class="row wrap">
+        <button id="accRegister" class="btn sm">注册并绑定</button>
+        <button id="accLogin" class="btn ghost sm">已有账号，登录</button>
+      </div>
+      <p class="hint" id="accMsg"></p>
+    </div>
+    <div id="accBound" class="hidden">
+      <div class="acc-av-row">
+        <span id="accAvatar" class="acc-av" aria-hidden="true"></span>
+        <div class="acc-av-info">
+          <button id="accAvatarBtn" class="btn ghost sm" type="button">换头像</button>
+          <p class="hint">支持 PNG / JPG / WebP，自动裁成方形；换设备也在。</p>
+        </div>
+      </div>
+      <label class="field">昵称<input id="accShownNick" maxlength="16"></label>
+      <label class="field">邮箱<input id="accShownEmail" readonly></label>
+      <p class="hint">这个账号可以在任何设备登录。当前设备的登录凭证存在本机。</p>
+      <div class="row wrap"><button id="accSaveNick" class="btn sm ghost">保存昵称</button></div>
+      <div class="acc-devs">
+        <div class="acc-devs-head"><b>登录的设备</b><button id="accDevRefresh" class="btn ghost sm" type="button">刷新</button></div>
+        <div id="accDevices"></div>
+        <p class="hint" id="accDevMsg"></p>
+      </div>
+      <div class="row"><button id="accLogout" class="btn ghost sm">退出登录（换账号）</button></div>
+      <p class="hint warn">退出后本机将回到匿名身份，房间所有权不会跟着走。</p>
+    </div>
+  </div>
+  <div id="t-about" class="tabpane hidden">
+    <img src="assets/fong-wordmark-clear.svg" alt="FONG" class="about-mark">
+    <p class="hint">版本 <span id="ver"></span> · 本机身份 <span id="selfId" class="mono"></span></p>
+    <div class="row wrap">
+      <button id="chkUpdate" class="btn ghost sm">检查更新</button>
+      <span class="hint" id="updMsg"></span>
+    </div>
+    <p class="hint">关闭窗口会留在托盘，语音不断；托盘右键可退出。</p>
+    <div class="row wrap about-links">
+      <button id="ossBtn" class="btn ghost sm">开源许可</button>
+      <a class="link" href="https://fongget.xyz/terms" target="_blank" rel="noopener">用户协议</a>
+      <a class="link" href="https://fongget.xyz/privacy" target="_blank" rel="noopener">隐私政策</a>
+    </div>
+  </div>
+</div></div>
+
+<!-- 房间设置 / 成员 -->
+<div id="spaceSet" class="modal hidden" role="dialog" aria-modal="true" aria-label="房间设置"><div class="card wide pane-card">
+  <header class="card-head"><div class="title">房间设置</div><button class="icon-btn" data-close aria-label="关闭"><svg><use href="#i-x"/></svg></button></header>
+  <div class="tabs"><button class="tab on" data-tab2="s-info">概览</button><button class="tab" data-tab2="s-members">成员</button></div>
+  <div id="s-info" class="tabpane2">
+    <div class="row"><div id="ssIcon" class="space-tile big"></div><div class="col"><label class="field">房间名<input id="ssName" maxlength="24"></label></div></div>
+    <div class="row"><button id="ssIconBtn" class="btn ghost sm">换图标</button><button id="ssIconClear" class="btn ghost sm">用首字母</button><input id="ssIconFile" type="file" accept="image/*" hidden></div>
+    <label class="field">新频道默认人数上限<select id="ssMax"></select></label>
+    <div class="field">房间号
+      <div class="row"><div class="code-chip"><b id="ssCode">------</b></div>
+        <button id="ssCopyCode" class="btn sm">复制房间号</button>
+        <button id="ssCopy" class="btn ghost sm">复制邀请</button></div>
+      <span class="hint">朋友点「+」→「输房间号」，填这个就能进来。</span>
+    </div>
+    <details class="adv"><summary>邀请链接与邀请码（备用）</summary>
+      <div class="row"><input id="ssInvite" readonly class="mono grow"></div>
+      <span class="hint">链接可以点开直接进；邀请码用于旧版本。</span>
+    </details>
+    <div class="row between"><span class="hint" id="ssRoleHint"></span><button id="ssDanger" class="btn sm danger-ghost"></button></div>
+  </div>
+  <div id="s-members" class="tabpane2 hidden"><div id="ssMembers" class="mlist"></div></div>
+</div></div>
+
+<!-- 首次引导 -->
+<div id="bannedGate" class="modal hidden" role="dialog" aria-modal="true" aria-label="已被封禁"><div class="card gate-card">
+  <img src="assets/fong-wordmark-clear.svg" alt="FONG" class="gate-mark">
+  <p class="gate-sub" id="bgSub">你已被管理员封禁，暂时无法进入这个空间。</p>
+  <p class="hint" id="bgRoom"></p>
+  <div class="row" style="display:flex;gap:8px;margin-top:4px">
+    <button id="bgOther" class="btn ghost" style="flex:1">切换到其他空间</button>
+    <button id="bgLogout" class="btn danger" style="flex:1">退出登录</button>
+  </div>
+  <p class="hint">解除封禁需要联系该空间的管理员。</p>
+</div></div>
+
+<div id="loginGate" class="modal hidden" role="dialog" aria-modal="true" aria-label="登录 FONG"><div class="card gate-card">
+  <img src="assets/fong-wordmark-clear.svg" alt="FONG" class="gate-mark">
+  <p class="gate-sub" id="lgSub">用一个邮箱账号，换设备也能接着用。</p>
+  <div class="seg" id="lgTabs">
+    <button type="button" data-lg="login" class="on">登录</button>
+    <button type="button" data-lg="register">注册</button>
+    <button type="button" data-lg="code">验证码</button>
+  </div>
+  <label class="field">邮箱<input id="lgEmail" type="text" placeholder="QQ号，或完整邮箱" spellcheck="false" autocomplete="email"></label>
+  <p class="hint" id="lgEmailHint">只填 QQ 号就行，会自动补成 12345@qq.com</p>
+  <label class="field">密码<input id="lgPass" type="password" placeholder="请输入密码" autocomplete="current-password"></label>
+  <label class="field hidden" id="lgCodeWrap">验证码<input id="lgCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" autocomplete="one-time-code" spellcheck="false"></label>
+  <button type="button" id="lgSendBtn" class="btn ghost sm hidden">获取验证码</button>
+  <label class="field hidden" id="lgPass2Wrap">确认密码<input id="lgPass2" type="password" placeholder="再输一遍" autocomplete="new-password"></label>
+  <label class="field hidden" id="lgNickWrap">昵称<input id="lgNick" maxlength="16" placeholder="队友看到的名字"></label>
+  <label class="check agree hidden" id="lgAgreeWrap"><input id="lgAgree" type="checkbox"><span>我已阅读并同意 <a class="link" href="https://fongget.xyz/terms" target="_blank" rel="noopener">《用户协议》</a>和<a class="link" href="https://fongget.xyz/privacy" target="_blank" rel="noopener">《隐私政策》</a></span></label>
+  <button id="lgSubmit" class="btn">登录</button>
+  <p class="hint" id="lgMsg"></p>
+
+</div></div>
+
+
+<div id="onboard" class="modal solid hidden" role="dialog" aria-modal="true" aria-label="首次设置"><div class="card">
+  <div class="steps" aria-hidden="true"><i class="on"></i><i></i><i></i></div>
+  <div class="ob" data-step="1">
+    <div class="title">选择麦克风</div>
+    <select id="obMic" aria-label="麦克风"></select>
+    <div class="meter big"><i id="obMeter"></i></div>
+    <p class="hint">说句话，电平条会跳。</p>
+    <div class="row wrap">
+      <button id="obLoop" class="btn ghost sm">听听自己的声音</button>
+      <span class="hint">戴耳机再点，外放会啸叫</span>
+    </div>
+  </div>
+  <div class="ob hidden" data-step="2">
+    <div class="title">选择耳机或音箱</div>
+    <select id="obSpk" aria-label="扬声器"></select>
+    <button id="obTone" class="btn ghost sm"><svg><use href="#i-play"/></svg>播放测试音</button>
+  </div>
+  <div class="ob hidden" data-step="3">
+    <div class="title">完成！</div>
+    <p>你的设置：<b class="hl" id="obSummary">48 kHz · Opus 256 kbps · 降噪「自然」</b></p>
+    <label class="field">昵称<input id="obNick" maxlength="16" placeholder="朋友们看到的名字"></label>
+  </div>
+  <div class="row between"><button id="obSkip" class="btn ghost sm">跳过</button><button id="obNext" class="btn sm">下一步</button></div>
+</div></div>
+
+<!-- 线性图标（Lucide，1.5 描边） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/></symbol>
+<symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M2 2l20 20M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v2a3 3 0 0 0 5.12 2.12M19 10v1a7 7 0 0 1-.11 1.23M16.95 16.95A7 7 0 0 1 5 11v-1M12 18v4M8 22h8"/></symbol>
+<symbol id="i-headphones" viewBox="0 0 24 24"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></symbol>
+<symbol id="i-headphones-off" viewBox="0 0 24 24"><path d="M2 2l20 20M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 2.3-6M8.6 3.7A9 9 0 0 1 21 12v4M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+<symbol id="i-crown" viewBox="0 0 24 24"><path d="m2 7 5 5 5-8 5 8 5-5-2 12H4L2 7z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+<symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+<symbol id="i-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+<symbol id="i-restore" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+<symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7z"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7"/></symbol>
+<symbol id="i-volume-x" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5zM22 9l-6 6M16 9l6 6"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M9 10.76V6h6v4.76l2 3.24H7l2-3.24zM8 2h8"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9V3z"/></symbol>
+<symbol id="i-ear" viewBox="0 0 24 24"><path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/></symbol>
+<symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 4.17-2.65M10.66 5c4.01-.36 8.14.9 11.34 3.76M16.85 11.25a10 10 0 0 1 2.22 1.68M5 13a10 10 0 0 1 5.24-2.76M12 20h.01"/></symbol>
+</defs></svg>
+
+<script src="fong-basic.js"></script>
+<script src="fong-wire.js"></script>
+<script src="denoise-renderer.js"></script>
+<script src="vad-gate.js"></script>
+<script src="renderer.js"></script>
+</body></html>

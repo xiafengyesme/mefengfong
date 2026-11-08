@@ -1,0 +1,30 @@
+[package]
+name = "fong-dsp"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "fong_dsp"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+sonora = "0.3"
+ort = { version = "2.0.0-rc.15", features = ["load-dynamic"] }
+realfft = "3"
+rustfft = "6"
+hound = "3"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+[[bin]]
+name = "specsub_bench"
+path = "src/bin/specsub_bench.rs"

@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0B0C0E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>FONG · 手机连麦</title>
+<style>
+  :root{
+    --bg:#0B0C0E; --panel:#14171C; --elev:#1B1F26; --border:#262B33;
+    --text:#E6E9EE; --muted:#8B93A1; --accent:#D7FF3A; --danger:#FF5A4E;
+    --ok:#3DDC84;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--bg);color:var(--text);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex;flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+  header .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),#9dc42f);color:#0B0C0E;font-weight:900;font-size:15px}
+  header .t{font-weight:700;font-size:16px}
+  header .s{font-size:12px;color:var(--muted)}
+
+  main{flex:1;display:flex;flex-direction:column;padding:16px;gap:16px;overflow-y:auto}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  input{
+    width:100%;font:inherit;font-size:16px;padding:12px 14px;border-radius:11px;
+    border:1px solid var(--border);background:var(--elev);color:var(--text);outline:none;
+  }
+  input:focus{border-color:var(--accent)}
+  .btn{
+    width:100%;font:inherit;font-size:16px;font-weight:600;padding:14px;border-radius:12px;
+    border:0;background:var(--accent);color:#0B0C0E;cursor:pointer;
+  }
+  .btn:disabled{opacity:.4}
+  .btn.ghost{background:var(--elev);color:var(--text);border:1px solid var(--border)}
+  .btn.danger{background:var(--danger);color:#fff}
+
+  .status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+  .dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(61,220,132,.18)}
+  .dot.warn{background:#F0A020}
+  .dot.err{background:var(--danger)}
+
+  .meter{height:8px;border-radius:4px;background:var(--elev);overflow:hidden;margin-top:12px}
+  .meter > i{display:block;height:100%;width:0;background:linear-gradient(90deg,#9fd62a,var(--accent));transition:width .06s linear}
+
+  .row{display:flex;gap:12px}
+  .row > *{flex:1}
+
+  #log{
+    font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.7;color:var(--muted);
+    background:#0a0c10;border:1px solid var(--border);border-radius:10px;padding:10px;
+    height:100px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+  }
+  .hint{font-size:12px;color:var(--muted);line-height:1.7}
+  .warnbox{background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.35);
+    border-radius:12px;padding:12px 16px;font-size:13px;color:#F0C070;line-height:1.7}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tab{flex:1;text-align:center;padding:9px;border-radius:10px;background:var(--elev);
+    border:1px solid var(--border);font-size:14px;color:var(--muted);cursor:pointer}
+  .tab.on{background:rgba(215,255,58,.12);border-color:var(--accent);color:var(--accent);font-weight:600}
+  audio{display:none}
+  .sp{height:10px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">F</div>
+  <div>
+    <div class="t">FONG 手机连麦</div>
+    <div class="s" id="srvLabel">未连接</div>
+  </div>
+</header>
+
+<main>
+  <div class="warnbox" id="iosHint" style="display:none">
+    iOS 需要 https:// 才能用麦克风。当前不是 https，点「加入」会失败。
+  </div>
+
+  <div id="loginView">
+    <div class="card">
+      <div class="tabs">
+        <div class="tab on" id="tabLogin">登录</div>
+        <div class="tab" id="tabReg">注册</div>
+      </div>
+      <label>邮箱</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email" spellcheck="false">
+      <div class="sp"></div>
+      <label>密码</label>
+      <input id="pass" type="password" placeholder="至少 6 位" autocomplete="current-password">
+      <div class="sp"></div>
+      <div id="nameWrap" style="display:none">
+        <label>昵称</label>
+        <input id="nick" maxlength="16" placeholder="队友看到的名字">
+        <div class="sp"></div>
+      </div>
+      <button class="btn" id="authBtn">登录</button>
+      <div class="sp"></div>
+      <div class="status"><span class="dot" id="stDot"></span><span id="stText">未登录</span></div>
+    </div>
+    <div class="card">
+      <div class="hint">
+        手机和电脑登录<b>同一个账号</b>，就能进同一个房间。<br>
+        想让朋友加入，把你的<b>房间号</b>发他，让他注册后填进来。
+      </div>
+    </div>
+  </div>
+
+  <div id="joinView" style="display:none">
+    <div class="card">
+      <div class="status" style="justify-content:space-between;margin-bottom:12px">
+        <span id="whoami">—</span>
+        <span id="stText2" style="font-size:12px"></span>
+      </div>
+      <label for="code">房间号（6 位）</label>
+      <input id="code" placeholder="例如 H2RP7K" maxlength="7" autocapitalize="characters" spellcheck="false" autocomplete="off">
+      <div class="sp"></div>
+      <button class="btn" id="joinBtn">加入语音</button>
+      <div class="sp"></div>
+      <div class="status"><span class="dot" id="stDot2"></span><span id="stText3">未加入</span></div>
+    </div>
+  </div>
+
+  <div id="inView" style="display:none">
+    <div class="card">
+      <div class="status" style="justify-content:space-between">
+        <span><span class="dot on"></span> 已连上 <b id="roomLabel"></b></span>
+        <span id="netText">—</span>
+      </div>
+      <div class="meter"><i id="lvl"></i></div>
+      <div style="height:14px"></div>
+      <div class="row">
+        <button class="btn ghost" id="muteBtn">静音</button>
+        <button class="btn danger" id="leaveBtn">离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="log"></div>
+  </div>
+
+  <audio id="remoteAudio" autoplay playsinline></audio>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var logEl = $('log');
+  function log(m) {
+    logEl.textContent += m + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  var BASE = location.origin;
+
+  var S = {
+    uid: '', key: '', name: '',
+    spaceId: '', roomKey: '', roomLabel: '',
+    pc: null, stream: null, sender: null,
+    muted: false, remoteEl: $('remoteAudio'),
+    // 【0.4.69】频道密码：只在本次页面的内存里记，不写 localStorage。
+    // 手机多在共享设备上用，存下来会泄露给下一个使用者。
+    roomPw: '',
+    actx: null, statsTimer: null, meterTimer: null,
+  };
+
+  function setDot(el, kind) {
+    el.className = 'dot' + (kind === 'ok' ? ' on' : kind === 'warn' ? ' warn' : kind === 'err' ? ' err' : '');
+  }
+  function st3(text, kind) {
+    $('stText3').textContent = text;
+    setDot($('stDot2'), kind || '');
+  }
+
+  // ---------- 持久化 ----------
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem('fong.m.auth') || '{}');
+      S.uid = d.uid || ''; S.key = d.key || ''; S.name = d.name || '';
+    } catch (_) {}
+  }
+  function save() {
+    localStorage.setItem('fong.m.auth', JSON.stringify({ uid: S.uid, key: S.key, name: S.name }));
+  }
+  function authHeaders() {
+    return { 'content-type': 'application/json', 'X-Fong-Uid': S.uid, 'X-Fong-Key': S.key };
+  }
+
+  // ---------- 登录 / 注册 ----------
+  var mode = 'login';
+  $('tabLogin').onclick = function () {
+    mode = 'login';
+    $('tabLogin').className = 'tab on'; $('tabReg').className = 'tab';
+    $('nameWrap').style.display = 'none';
+    $('authBtn').textContent = '登录';
+  };
+  $('tabReg').onclick = function () {
+    mode = 'reg';
+    $('tabReg').className = 'tab on'; $('tabLogin').className = 'tab';
+    $('nameWrap').style.display = 'block';
+    $('authBtn').textContent = '注册';
+  };
+
+  $('authBtn').onclick = async function () {
+    var email = ($('email').value || '').trim();
+    var pass = $('pass').value || '';
+    var nick = ($('nick').value || '').trim();
+    if (!email || !pass) { alert('填邮箱和密码'); return; }
+    $('authBtn').disabled = true;
+    $('stText').textContent = '处理中…';
+    try {
+      var url = mode === 'reg' ? '/api/auth/register' : '/api/auth/login';
+      var body = { email: email, pass: pass };
+      if (mode === 'reg') body.name = nick || email.split('@')[0];
+      var r = await fetch(BASE + url, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      var d = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error(d.error || ('失败 ' + r.status));
+      S.uid = d.id; S.key = d.key; S.name = d.name || nick || email.split('@')[0];
+      save();
+      log((mode === 'reg' ? '注册成功 ' : '登录成功 ') + S.name);
+      enterJoin();
+    } catch (e) {
+      $('stText').textContent = e.message;
+      setDot($('stDot'), 'err');
+      log('认证失败: ' + e.message);
+    } finally {
+      $('authBtn').disabled = false;
+    }
+  };
+
+  // ---------- 进到选房间 ----------
+  function enterJoin() {
+    $('loginView').style.display = 'none';
+    $('joinView').style.display = 'block';
+    $('whoami').textContent = S.name + '（已登录）';
+    setDot($('stDot2'), 'ok');
+    $('stText3').textContent = '未加入';
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('code')) $('code').value = qs.get('code').toUpperCase();
+  }
+
+  // ---------- 房间号 → spaceId ----------
+  async function resolveCode(code) {
+    var c = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (c.length !== 6) throw new Error('房间号是 6 位');
+    var r = await fetch(BASE + '/api/find/' + c);
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(d.error || '房间号无效');
+    return d.spaceId;
+  }
+
+  // ---------- 加入语音 ----------
+  $('joinBtn').onclick = async function () {
+    var code = ($('code').value || '').trim();
+    S.code = code;   // 自动重进时用
+    $('joinBtn').disabled = true;
+    st3('正在查房间…', 'warn');
+    var spaceId;
+    try {
+      spaceId = await resolveCode(code);
+    } catch (e) {
+      st3(e.message, 'err'); $('joinBtn').disabled = false; return;
+    }
+
+    // 关键顺序：GET /api/spaces/{sid} 要求「已是成员」（withSpace needMember=true），
+    // 非成员会直接 403「你已不在这个空间里」。所以必须**先 POST /join 再加入**，
+    // 而 /join 返回的就是最新视图，不用再 GET 一遍。
+    st3('正在加入房间…', 'warn');
+    var roomId, roomName;
+    try {
+      var jr = await fetch(BASE + '/api/spaces/' + spaceId + '/join', {
+        method: 'POST', headers: authHeaders(),
+      });
+      var sp = await jr.json().catch(function () { return {}; });
+      if (!jr.ok) throw new Error(sp.error || ('加入失败 ' + jr.status));
+      var rooms = sp.rooms || [];
+      var v = rooms.filter(function (x) { return x.kind !== 'text'; })[0] || rooms[0];
+      if (!v) throw new Error('这个空间没有语音频道');
+      roomId = v.id; roomName = v.name;
+      S.spaceId = spaceId; S.roomLabel = roomName;
+      log('进入空间 ' + (sp.name || spaceId) + ' / ' + roomName);
+    } catch (e) {
+      st3(e.message, 'err'); $('joinBtn').disabled = false; return;
+    }
+
+    S.roomKey = spaceId + ':' + roomId;
+    var peerId = S.uid + '.' + Math.random().toString(16).slice(2, 8);
+    S.peerId = peerId;   // /events 重协商要用
+
+    // 麦克风
+    st3('请求麦克风…', 'warn');
+    try {
+      S.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      log('麦克风 OK');
+    } catch (e) {
+      st3('麦克风被拒绝', 'err'); log('getUserMedia: ' + e.name);
+      alert('拿不到麦克风：' + e.name);
+      $('joinBtn').disabled = false; return;
+    }
+
+    // WebRTC
+    st3('建立连接…', 'warn');
+    var pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
+    S.pc = pc;
+    var track = S.stream.getAudioTracks()[0];
+    var tr = pc.addTransceiver(track, { direction: 'sendrecv', streams: [new MediaStream([track])] });
+    S.sender = tr.sender;
+
+    var pcRef = pc;
+    pc.ontrack = function (ev) {
+      log('收到远端音轨');
+      S.remoteEl.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+      S.remoteEl.play().catch(function () { log('点一下屏幕授权播放'); });
+      try { if ('jitterBufferTarget' in ev.receiver) ev.receiver.jitterBufferTarget = 60; } catch (_) {}
+    };
+    pc.onconnectionstatechange = function () {
+      if (S.pc !== pcRef) return;
+      var s = pcRef.connectionState;
+      log('连接: ' + s);
+      if (s === 'connected') st3('已连上', 'ok');
+      else if (s === 'failed') { st3('连接失败', 'err'); doLeave(); }
+      else if (s === 'disconnected') st3('网络不稳…', 'warn');
+    };
+
+    try {
+      var offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      // 【0.4.69】频道密码：与桌面端一致 —— 服务端 403 + reason 后弹框，输入后带 ?pw= 重试。
+      // 这里原来只有一个通用 throw，加密频道在手机上永远进不去（而且没有输入框）。
+      var sigUrl = BASE + '/signal' + (S.roomPw ? '?pw=' + encodeURIComponent(S.roomPw) : '');
+      var sr = await fetch(sigUrl, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ room: S.roomKey, peer: peerId, type: 'offer', sdp: pc.localDescription.sdp }),
+      });
+      var ans = await sr.json().catch(function () { return {}; });
+      if (!sr.ok) {
+        var rsn = ans.reason;
+        if (rsn === 'ROOM_PASSWORD' || rsn === 'ROOM_PASSWORD_WRONG') {
+          var promptText = rsn === 'ROOM_PASSWORD_WRONG'
+            ? '密码不对，再试一次（这个频道设了密码）'
+            : '这个频道设了密码，请输入后再进';
+          var pw = window.prompt(promptText, '');
+          if (pw === null) {
+            throw Object.assign(new Error('已取消输入密码'), { silent: true });
+          }
+          S.roomPw = pw;
+          log('带密码重试信令');
+          return startCall();   // 用新密码重走一遍（pc 会重建）
+        }
+        if (rsn === 'BANNED') {
+          throw Object.assign(new Error('你被管理员封禁了，无法进入这个空间'), { silent: true });
+        }
+        throw new Error(ans.error || ('服务器拒绝 ' + sr.status));
+      }
+      await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp });
+      log('信令完成');
+    } catch (e) {
+      st3(e.message, 'err'); log('信令失败: ' + e.message);
+      if (!e.silent) alert('进不去：' + e.message);
+      $('joinBtn').disabled = false; return;
+    }
+
+    $('joinView').style.display = 'none';
+    $('inView').style.display = 'block';
+    $('roomLabel').textContent = S.roomLabel;
+    $('joinBtn').disabled = false;
+    startMeter();
+    startStats();
+    listenEvents();   // 服务端推 offer（别人进出房间）→ 手机端补答，否则听不到新进的人
+    watchIce();       // 断线自动重进
+  };
+
+  // ---------- SSE：服务端重协商 / bye ----------
+  // 【0.4.11 补课】这个页面原来只做一次首轮握手：服务端之后推的 offer 全被无视，
+  // 电脑端每次刚接上手机的新音轨就被下一次重连拆掉——单向没声的主因。
+  function listenEvents() {
+    if (S.es) { try { S.es.close(); } catch (_) {} }
+    var es = new EventSource(BASE + '/events?room=' + encodeURIComponent(S.roomKey) + '&peer=' + encodeURIComponent(S.peerId));
+    S.es = es;
+    es.onmessage = function (ev) {
+      var msg; try { msg = JSON.parse(ev.data); } catch (_) { return; }
+      if (msg.type === 'offer' && S.pc) {
+        S.pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp }).then(function () {
+          return S.pc.createAnswer();
+        }).then(function (a) {
+          return S.pc.setLocalDescription(a).then(function () {
+            return fetch(BASE + '/answer', { method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ room: S.roomKey, peer: S.peerId, type: 'answer', sdp: S.pc.localDescription.sdp }) });
+          });
+        }).then(function () { log('已接上房间里的新声音'); }).catch(function (e) { log('重协商失败: ' + e.message); });
+      } else if (msg.type === 'bye') {
+        log('被服务器断开' + (msg.reason ? '：' + msg.reason : '') + '，自动重进…');
+        rejoin();
+      }
+    };
+    es.onerror = function () { /* EventSource 自带重连 */ };
+  }
+
+  // ---------- ICE 看门狗：断线自动重进 ----------
+  function watchIce() {
+    if (!S.pc) return;
+    S.pc.oniceconnectionstatechange = function () {
+      if (!S.pc) return;
+      var st = S.pc.iceConnectionState;
+      if (st === 'disconnected' && !S._dc) {
+        // 瞬断给 5 秒自愈窗口，别急着拆
+        S._dc = setTimeout(function () { S._dc = null; if (S.pc && S.pc.iceConnectionState !== 'connected') { log('连接没恢复，自动重进…'); rejoin(); } }, 5000);
+      }
+      if (st === 'connected' && S._dc) { clearTimeout(S._dc); S._dc = null; }
+      if (st === 'failed') { log('连接失败，自动重进…'); rejoin(); }
+    };
+  }
+
+  function rejoin() {
+    var code = S.code;
+    if (S._dc) { clearTimeout(S._dc); S._dc = null; }
+    doLeave();
+    setTimeout(function () {
+      $('code').value = code || '';
+      $('joinBtn').click();
+    }, 2500);
+  }
+
+  // ---------- 电平 ----------
+  function startMeter() {
+    clearInterval(S.meterTimer);
+    try {
+      S.actx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      var src = S.actx.createMediaStreamSource(S.stream);
+      var an = S.actx.createAnalyser();
+      an.fftSize = 512; an.smoothingTimeConstant = 0.3;
+      src.connect(an);
+      var buf = new Float32Array(an.fftSize);
+      S.meterTimer = setInterval(function () {
+        an.getFloatTimeDomainData(buf);
+        var s = 0;
+        for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+        var db = 20 * Math.log10(Math.sqrt(s / buf.length) + 1e-9);
+        $('lvl').style.width = Math.max(0, Math.min(100, (db + 70) / 60 * 100)) + '%';
+      }, 60);
+    } catch (e) { log('电平表: ' + e.message); }
+  }
+
+  // ---------- 网络 ----------
+  function startStats() {
+    clearInterval(S.statsTimer);
+    S.statsTimer = setInterval(async function () {
+      if (!S.pc) return;
+      try {
+        var st = await S.pc.getStats(), rtt = null, jb = null;
+        st.forEach(function (r) {
+          if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') rtt = Math.round((r.currentRoundTripTime || 0) * 1000);
+          if (r.type === 'inbound-rtp' && r.kind === 'audio' && r.jitterBufferEmittedCount)
+            jb = Math.round(r.jitterBufferDelay / r.jitterBufferEmittedCount * 1000);
+        });
+        $('netText').textContent = (rtt != null ? rtt + 'ms' : '—') + (jb != null ? ' · 缓冲' + jb + 'ms' : '');
+      } catch (_) {}
+    }, 2000);
+  }
+
+  // ---------- 静音 / 离开 ----------
+  $('muteBtn').onclick = function () {
+    S.muted = !S.muted;
+    if (S.stream) S.stream.getAudioTracks().forEach(function (t) { t.enabled = !S.muted; });
+    $('muteBtn').textContent = S.muted ? '取消静音' : '静音';
+    $('muteBtn').className = 'btn ' + (S.muted ? '' : 'ghost');
+  };
+
+  function doLeave() {
+    clearInterval(S.statsTimer); clearInterval(S.meterTimer);
+    if (S._dc) { clearTimeout(S._dc); S._dc = null; }
+    if (S.es) { try { S.es.close(); } catch (_) {} S.es = null; }
+    if (S.pc) { try { S.pc.close(); } catch (_) {} S.pc = null; }
+    if (S.stream) { S.stream.getTracks().forEach(function (t) { t.stop(); }); S.stream = null; }
+    if (S.actx) { try { S.actx.close(); } catch (_) {} S.actx = null; }
+    S.remoteEl.srcObject = null;
+    $('inView').style.display = 'none';
+    $('joinView').style.display = 'block';
+    $('lvl').style.width = '0';
+    st3('未加入', '');
+  }
+  $('leaveBtn').onclick = doLeave;
+
+  // ---------- 启动 ----------
+  load();
+  $('srvLabel').textContent = location.host;
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) && location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    $('iosHint').style.display = 'block';
+  }
+  // 已有凭据 → 验证一下
+  if (S.uid && S.key) {
+    fetch(BASE + '/api/auth/me', { headers: authHeaders() })
+      .then(function (r) { if (r.ok) return r.json(); throw new Error('凭据失效'); })
+      .then(function (d) { S.name = d.name || S.name; save(); enterJoin(); })
+      .catch(function () { log('登录已过期，请重新登录'); });
+  }
+  fetch(BASE + '/healthz', { cache: 'no-store' })
+    .then(function (r) { log('服务器 ' + (r.ok ? '可达' : '异常 ' + r.status)); })
+    .catch(function () { log('服务器不可达'); });
+})();
+</script>
+</body>
+</html>

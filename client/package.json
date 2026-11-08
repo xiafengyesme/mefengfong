@@ -1,0 +1,92 @@
+{
+  "name": "fong",
+  "productName": "FONG",
+  "version": "0.4.74",
+  "description": "FONG 语音连麦",
+  "main": "main.js",
+  "author": "FONG",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.fong.voice.desktop",
+    "productName": "FONG",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "denoise-renderer.js",
+      "denoise-worklet.js",
+      "denoise-worker.js",
+      "index.html",
+      "style.css",
+      "assets/**/*",
+      "fong-basic.js",
+      "fong-basic.css",
+      "fong-wire.js",
+      "fong-arc.css",
+      "vad-gate.js",
+      "vad-gate-worklet.js",
+      "aec-ref-worklet.js"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/gtcrn_light48_stream.onnx",
+        "to": "gtcrn_light48_stream.onnx"
+      },
+      {
+        "from": "resources/onnxruntime.dll",
+        "to": "onnxruntime.dll"
+      },
+      {
+        "from": "native/fong-native",
+        "to": "fong-native"
+      },
+      {
+        "from": "native/uiohook-napi",
+        "to": "uiohook-napi"
+      },
+      {
+        "from": "native/node-gyp-build",
+        "to": "node_modules/node-gyp-build"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/fong.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FONG",
+      "installerIcon": "assets/fong.ico",
+      "uninstallerIcon": "assets/fong.ico",
+      "installerHeaderIcon": "assets/fong.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "electronVersion": "45.2.2",
+    "electronDist": "H:/fongmuisc/work/eapp/node_modules/electron/dist",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://8.156.40.211:8443/dl/"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  }
+}

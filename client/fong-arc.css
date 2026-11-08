@@ -1,0 +1,90 @@
+/* FONG 声线环 —— 接在 0.3.0 现有 .member 卡片上（不换卡片结构）
+ *
+ * 全部规则限定在 .fong-wire-on 下（接线层 init 成功才加这个类）：
+ *   接线层没起来时，0.3.0 原有的说话指示（实线环 + 呼吸）完全不受影响，不给降级路径留坑。
+ *
+ * 用 .member .av::before 画弧（0.3.0 的 ::before 空闲，::after 是它原来的实线环）：
+ *   弧长 = 电平 → 由接线层把 --lvl（0–1）写进 .member，CSS 侧只读不算。
+ *   conic-gradient 从 12 点钟顺时针亮起；radial mask 把中间掏空成一条 3px 的弧。
+ *
+ * 按设计停用 0.3.0 原来的实线环 + 呼吸动画：只留弧线，不缩放、不发光。
+ * 卡片描边高亮（style.css 的 .member.speaking）保留 —— 与设计稿一致。
+ */
+
+.fong-wire-on .member .av::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(from 0deg,
+    var(--accent) 0 calc(var(--lvl, 0) * 360deg),
+    rgba(215, 255, 58, .16) calc(var(--lvl, 0) * 360deg) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  transition: opacity .18s ease-out;
+}
+.fong-wire-on .member.speaking .av::before { opacity: 1; }
+
+/* 停用原来的实线环保留呼吸环：两套叠着会打架 */
+.fong-wire-on .member.speaking .av::after { display: none; }
+
+/* 被本地屏蔽、但对方仍在说话：灰色虚线弧（形状不变，只换质感）+ 卡片描边回中性 */
+.fong-wire-on .member.speaking.blocked .av::before {
+  background: repeating-conic-gradient(var(--text-muted) 0 10deg, transparent 10deg 20deg);
+}
+.fong-wire-on .member.speaking.blocked {
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+/* 说明：自己那张卡的 --lvl 由接线层的 tickSelf() 按 Mic.db 写入（50 ms），
+   所以自绘卡也能看到弧长随自己音量变化，不依赖远端检测。 */
+
+/* 0.3.1 接线补：fong-basic.css 给 .fong-mixer 写了 display:flex，会盖过浏览器默认的 [hidden]{display:none}，
+   实测（Electron 45）调音台点开后再也关不上。这里把 hidden 显式压回去。 */
+.fong-wire-on .fong-mixer[hidden]{display:none}
+
+/* ---- 账号 → 登录的设备（auth 联调） ---- */
+.acc-devs{margin:var(--s4) 0;padding-top:var(--s3);border-top:1px solid var(--border)}
+.acc-devs-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s2)}
+.acc-dev{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s2) var(--s3);margin-bottom:var(--s2);
+  border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-base)}
+.acc-dev.cur{border-color:var(--accent-dim);box-shadow:inset 3px 0 0 var(--accent)}
+.acc-dev-info{min-width:0}
+.acc-dev-name{font-size:14px;display:flex;align-items:center;gap:var(--s2)}
+.acc-dev-meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+.acc-dev-pill{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--accent);color:var(--bg-base);font-weight:600}
+
+/* 账号页头像行 + 自己卡片悬停提示 */
+.acc-av-row{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.acc-av{display:inline-flex}
+.acc-av-info{min-width:0}
+.acc-av-info .hint{margin:4px 0 0}
+.fong-wire-on .fong-tile.me .fong-face{cursor:pointer}
+.fong-wire-on .fong-tile.me .fong-face::after{
+  content:"换头像";position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+  font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.6);
+  color:#fff;opacity:0;transition:opacity .15s;pointer-events:none;white-space:nowrap;
+}
+.fong-wire-on .fong-tile.me .fong-face:hover::after{opacity:1}
+
+/* 侧栏底部「我的资料」入口 */
+.me-tile{margin-top:auto;width:44px;height:44px;display:grid;place-items:center;border:0;padding:0;
+  border-radius:50%;background:transparent;cursor:pointer;position:relative}
+.me-tile .av{width:36px;height:36px;font-size:14px;box-shadow:0 0 0 1px var(--border)}
+.me-tile:hover .av{box-shadow:0 0 0 2px var(--accent)}
+.me-tile.anon .av{opacity:.6}
+/* 我的资料卡 */
+.profile-card{display:flex;flex-direction:column;gap:14px;padding:2px 0}
+.profile-head{display:flex;align-items:center;gap:14px}
+.profile-who{min-width:0}
+.profile-name{font-size:16px;font-weight:600;color:var(--text-primary)}
+.profile-mail{font-size:12px;color:var(--text-muted);margin-top:2px;word-break:break-all}
+.profile-actions{display:flex;gap:8px}
+
+/* 自动更新进度条（标题栏下方一条，不挡内容） */
+.upd-bar{position:fixed;left:0;right:0;top:40px;height:3px;z-index:75;background:rgba(215,255,58,.12)}
+.upd-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s ease-out}
+.upd-bar span{position:absolute;right:12px;top:6px;font-size:11px;color:var(--text-muted);background:var(--bg-base);padding:2px 8px;border-radius:8px;border:1px solid var(--border)}

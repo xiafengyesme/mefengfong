@@ -1,0 +1,101 @@
+/* FONG 基础功能样式（成员卡 / 调音台 / 设置新增项）
+   只使用 FONG 0.3.0 style.css 已有的变量；单独打开 demo 时由 demo 自己补一份同名变量。
+   动画只动 opacity / transform / 背景，不触发重排。 */
+
+/* ---------- 成员卡 ---------- */
+.fong-tile{position:relative;width:200px;display:flex;flex-direction:column;align-items:center;gap:var(--s3,12px);
+  padding:28px var(--s4,16px) var(--s4,16px);border-radius:var(--r-lg,16px);background:var(--bg-elevated);border:1px solid var(--border);
+  transition:border-color .25s ease-out,box-shadow .25s ease-out}
+.fong-tile.talking{border-color:rgba(215,255,58,.55);box-shadow:0 0 0 1px rgba(215,255,58,.18)}
+.fong-tile.talking.blocked{border-color:var(--border-strong);box-shadow:none}
+
+.fong-face{position:relative;width:88px;height:88px;border-radius:50%;cursor:pointer}
+.fong-av{display:block;width:88px;height:88px;border-radius:50%;object-fit:cover;background:var(--bg-hover)}
+.fong-tile.silenced .fong-av{opacity:.6}
+.fong-tile.blocked .fong-av{filter:grayscale(.7);opacity:.7}
+
+/* 声线环：头像外 6px 处一条 3px 的弧，从 12 点钟顺时针亮起，弧长 = 电平 */
+.fong-arc{position:absolute;inset:-7px;border-radius:50%;pointer-events:none;opacity:0;
+  background:conic-gradient(from 0deg,var(--accent) 0 calc(var(--lvl,0) * 360deg),rgba(215,255,58,.16) calc(var(--lvl,0) * 360deg) 360deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+          mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+  transition:opacity .18s ease-out}
+.fong-tile.talking .fong-arc{opacity:1}
+.fong-tile.talking.blocked .fong-arc{background:repeating-conic-gradient(var(--text-muted) 0 10deg,transparent 10deg 20deg)}
+
+/* 角标（沿用 0.3.0：右下角圆形，红=自己静音/闭听，黄=管理员静音） */
+.fong-badges{position:absolute;right:-4px;bottom:-4px;display:flex;gap:2px}
+.fong-badges>span{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--danger);color:#0B0C0E;box-shadow:0 0 0 3px var(--bg-elevated)}
+.fong-badges>span.srv{background:var(--warning)}
+.fong-badges svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.fong-name{max-width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;font-weight:600;min-width:0}
+.fong-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fong-crown{width:15px;height:15px;flex:none;fill:none;stroke:var(--warning);stroke-width:1.5}
+.fong-you{flex:none;font-size:12px;font-weight:500;line-height:18px;padding:0 6px;border-radius:6px;background:var(--bg-hover);color:var(--text-muted)}
+
+/* 名字旁三格声柱：平时不占位，说话时出现，高度跟电平 */
+.fong-bars{display:none;align-items:flex-end;gap:2px;height:12px;flex:none}
+.fong-bars b{display:block;width:3px;border-radius:1px;background:var(--accent);height:100%;transform-origin:bottom;transition:transform .08s linear}
+.fong-bars b:nth-child(1){transform:scaleY(calc(.35 + var(--lvl,0) * .45))}
+.fong-bars b:nth-child(2){transform:scaleY(calc(.3 + var(--lvl,0) * .7))}
+.fong-bars b:nth-child(3){transform:scaleY(calc(.25 + var(--lvl,0) * .55))}
+.fong-tile.talking .fong-bars{display:inline-flex}
+.fong-tile.talking.blocked .fong-bars b{background:var(--text-muted)}
+
+.fong-note{min-height:18px;font-size:12px;line-height:18px;color:var(--text-muted);text-align:center;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0;transition:opacity .15s}
+.fong-note.on{opacity:1}
+.fong-note.warn{color:var(--warning)}
+
+/* 音量行：喇叭按钮 + 两段轨 + 数值胶囊 */
+.fong-vol{display:grid;grid-template-columns:24px 1fr 48px;align-items:center;gap:6px;width:100%;height:24px}
+.fong-vol button.fong-mute{display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;padding:0}
+.fong-vol button.fong-mute:hover{background:var(--bg-hover);color:var(--text-primary)}
+.fong-vol button.fong-mute[aria-pressed="true"]{color:var(--danger)}
+.fong-mute svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+/* 选择器加了一层父级：宿主页面常有全局 input{padding;border} / input[type=range]{height} 规则，不能被它们改形 */
+.fong-vol input.fong-range,.fong-mixer input.fong-range{-webkit-appearance:none;appearance:none;width:100%;min-width:0;height:6px;margin:0;padding:0;border:0;border-radius:3px;background:var(--bg-hover);cursor:pointer;position:relative;box-shadow:none}
+.fong-vol input.fong-range::-webkit-slider-thumb,.fong-mixer input.fong-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--text-primary);border:3px solid var(--bg-elevated);box-shadow:0 0 0 1px var(--border-strong)}
+.fong-vol input.fong-range:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:4px}
+.fong-tile.blocked .fong-vol input.fong-range{opacity:.35}
+/* 自己卡的输入电平行 */
+.fong-vol.self::after,.fong-vol.flat::after{display:none}
+.fong-self-ic{display:grid;place-items:center;width:24px;height:24px;color:var(--text-muted)}
+.fong-self-ic.off{color:var(--danger)}
+.fong-self-ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.fong-self-meter{height:6px;border-radius:3px;background:var(--bg-hover);overflow:hidden}
+.fong-self-meter i{display:block;height:100%;width:0;background:var(--text-muted);transition:width .05s linear}
+.fong-self-meter i.over{background:var(--accent)}
+/* “原声”刻度：100% 位置一道竖线（轨道上方 2px 小刻） */
+.fong-vol{position:relative}
+.fong-vol::after{content:"";position:absolute;top:3px;width:2px;height:4px;border-radius:1px;background:var(--text-muted);
+  left:calc(30px + (100% - 84px) * var(--knee-ratio,.5) - 1px);pointer-events:none}
+.fong-chip{justify-self:end;min-width:44px;text-align:center;font-size:12px;line-height:20px;border-radius:6px;padding:0 4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fong-chip.home{color:var(--text-muted)}
+.fong-chip.cut{color:var(--text-primary);background:var(--bg-hover)}
+.fong-chip.boost{color:var(--accent);background:rgba(215,255,58,.12)}
+.fong-chip.off{color:var(--danger);background:rgba(255,90,78,.12)}
+
+/* ---------- 底栏调音台（从扬声器图标弹出） ---------- */
+.fong-mixer{position:fixed;z-index:70;width:320px;padding:var(--s4,16px);border-radius:var(--r-md,12px);background:var(--bg-elevated);
+  border:1px solid var(--border);box-shadow:0 16px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:var(--s3,12px)}
+.fong-mixer h4{margin:0;font-size:13px;font-weight:600;color:var(--text-primary)}
+.fong-mix-row{display:grid;grid-template-columns:72px 1fr 44px;align-items:center;gap:var(--s2,8px);font-size:13px;color:var(--text-muted)}
+.fong-mix-row output{text-align:right;color:var(--text-primary);font-variant-numeric:tabular-nums;font-size:12px}
+.fong-mixer .fong-mix-row input.fong-range{height:4px}
+.fong-mix-hint{font-size:12px;color:var(--text-muted);line-height:1.5}
+.fong-mix-hint.warn{color:var(--warning)}
+
+/* ---------- 设置里的新增小件 ---------- */
+.fong-clash{font-size:12px;color:var(--warning);line-height:1.5}
+.fong-kbd-btn.clash{box-shadow:inset 0 0 0 1px var(--warning);color:var(--warning)}
+.fong-pending{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:18px;padding:0 8px;border-radius:6px;
+  color:var(--warning);background:rgba(232,195,58,.12)}
+.fong-dev{display:grid;grid-template-columns:1fr auto;align-items:center;gap:var(--s3,12px);padding:var(--s2,8px) var(--s3,12px);border-radius:var(--r-sm,8px);background:var(--bg-base);border:1px solid var(--border)}
+.fong-dev b{font-weight:600;font-size:13px;color:var(--text-primary)}
+.fong-dev .hint{display:block}
+.fong-dev.cur{border-color:rgba(215,255,58,.4)}
+.fong-upd{display:flex;align-items:center;gap:var(--s3,12px);padding:var(--s3,12px);border-radius:var(--r-sm,8px);background:var(--bg-base);border:1px solid var(--border)}
+.fong-upd .bar{flex:1;height:6px;border-radius:3px;background:var(--bg-hover);overflow:hidden}
+.fong-upd .bar i{display:block;height:100%;background:var(--accent)}
